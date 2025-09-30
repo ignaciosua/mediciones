@@ -39,7 +39,7 @@
   <!-- LOGIN -->
   <div id="loginCard" class="card">
     <h3>Iniciar sesión</h3>
-    <p class="muted">Usa un usuario de <em>Authentication → Users</em> (el que creaste: <code>ignaciosua.h@gmail.com</code> u otro).</p>
+    <p class="muted">Usa un usuario de <em>Authentication → Users</em> (ej: <code>ignaciosua.h@gmail.com</code>).</p>
     <div class="row">
       <div>
         <label>Email</label>
@@ -74,7 +74,7 @@
           </select>
         </div>
         <button id="refreshBtn" style="align-self:end">Actualizar</button>
-        <span class="muted" id="liveStatus">Sin suscripción</span>
+        <span class="muted" id="liveStatus">Auto: off</span>
       </div>
     </div>
 
@@ -143,12 +143,80 @@
     return chart;
   }
 
-  // ======= Estado realtime =======
-  let currentChannel = null;
+  // ======= Polling cada 10 s =======
+  let pollTimer = null;
+  let lastTsISO = null;      // cursor para pedir solo lo nuevo
+  const seenIds = new Set(); // evitar duplicados
+  const POLL_MS = 10_000;
 
+  function stopAuto() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    liveStatus.textContent = "Auto: off";
+  }
+
+  function startAuto(deviceId) {
+    stopAuto();
+    liveStatus.textContent = "Auto: 10s";
+    // pasada inmediata
+    fetchNew(deviceId).catch(console.error);
+    // y cada 10 s
+    pollTimer = setInterval(() => {
+      fetchNew(deviceId).catch(console.error);
+    }, POLL_MS);
+  }
+
+  async function fetchNew(deviceId) {
+    if (!lastTsISO) return;
+    const { data, error } = await supabase
+      .from("readings")
+      .select("id, ts, data")
+      .eq("device_id", deviceId)
+      .gt("ts", lastTsISO)
+      .order("ts", { ascending: true })
+      .limit(1000);
+    if (error) { console.error(error); return; }
+    if (!data || !data.length) return;
+
+    const c = ensureChart();
+    for (const r of data) {
+      if (seenIds.has(r.id)) continue;
+      seenIds.add(r.id);
+
+      const tsLabel = new Date(r.ts).toLocaleString();
+      const temp = r.data?.temp ?? r.data?.t ?? null;
+      const hum  = r.data?.hum  ?? r.data?.h ?? null;
+
+      c.data.labels.push(tsLabel);
+      c.data.datasets[0].data.push(temp);
+      c.data.datasets[1].data.push(hum);
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${tsLabel}</td>
+                      <td>${temp ?? "-"}</td>
+                      <td>${hum ?? "-"}</td>
+                      <td class="muted">${JSON.stringify(r.data)}</td>`;
+      rowsBody.insertBefore(tr, rowsBody.firstChild);
+    }
+    // avanza el cursor
+    lastTsISO = data[data.length - 1].ts;
+
+    // limita tamaño de la serie
+    const MAX_POINTS = 500;
+    while (c.data.labels.length > MAX_POINTS) {
+      c.data.labels.shift();
+      c.data.datasets[0].data.shift();
+      c.data.datasets[1].data.shift();
+    }
+    c.update();
+  }
+
+  // ======= Data =======
   async function loadDevices() {
-    // usamos la vista api.devices que ya filtra por usuario vía auth.uid()
-    const { data, error } = await supabase.from("devices").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("devices")
+      .select("*")
+      .order("created_at", { ascending: false });
     if (error) throw error;
     deviceSelect.innerHTML = "";
     if (!data || !data.length) {
@@ -177,7 +245,7 @@
     const fromISO = rangeToISO(rangeSelect.value);
     const { data, error } = await supabase
       .from("readings")
-      .select("*")
+      .select("id, ts, data")
       .eq("device_id", deviceId)
       .gte("ts", fromISO)
       .order("ts", { ascending: true })
@@ -188,10 +256,11 @@
     c.data.labels = [];
     c.data.datasets[0].data = []; // temp
     c.data.datasets[1].data = []; // hum
-
     rowsBody.innerHTML = "";
+    seenIds.clear();
 
     for (const r of data) {
+      seenIds.add(r.id);
       const tsLabel = new Date(r.ts).toLocaleString();
       c.data.labels.push(tsLabel);
       const temp = r.data?.temp ?? r.data?.t ?? null;
@@ -207,52 +276,9 @@
       rowsBody.appendChild(tr);
     }
     c.update();
-  }
 
-  async function subscribeLive(deviceId) {
-    // limpia suscripción previa
-    if (currentChannel) {
-      await supabase.removeChannel(currentChannel);
-      currentChannel = null;
-    }
-    liveStatus.textContent = "Suscrito…";
-
-    const c = ensureChart();
-
-    currentChannel = supabase
-      .channel(`readings-${deviceId}`)
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "readings",
-        filter: `device_id=eq.${deviceId}`
-      }, (payload) => {
-        const r = payload.new;
-        const tsLabel = new Date(r.ts).toLocaleString();
-        const temp = r.data?.temp ?? r.data?.t ?? null;
-        const hum  = r.data?.hum  ?? r.data?.h ?? null;
-
-        c.data.labels.push(tsLabel);
-        c.data.datasets[0].data.push(temp);
-        c.data.datasets[1].data.push(hum);
-        // Mantén máximo 500 puntos
-        if (c.data.labels.length > 500) {
-          c.data.labels.shift();
-          c.data.datasets[0].data.shift();
-          c.data.datasets[1].data.shift();
-        }
-        c.update();
-
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${tsLabel}</td>
-                        <td>${temp ?? "-"}</td>
-                        <td>${hum ?? "-"}</td>
-                        <td class="muted">${JSON.stringify(r.data)}</td>`;
-        rowsBody.insertBefore(tr, rowsBody.firstChild);
-      })
-      .subscribe((status) => {
-        liveStatus.textContent = (status === "SUBSCRIBED") ? "En vivo" : status;
-      });
+    // cursor para pedir solo lo nuevo
+    lastTsISO = (data && data.length) ? data[data.length - 1].ts : fromISO;
   }
 
   // ======= Auth & flujo =======
@@ -267,7 +293,7 @@
     const first = deviceSelect.value;
     if (first) {
       await loadHistory(first);
-      await subscribeLive(first);
+      startAuto(first); // 🚀 activa polling
     }
   }
 
@@ -276,6 +302,7 @@
     loginCard.classList.remove("hide");
     userEmail.textContent = "";
     logoutBtn.classList.add("hide");
+    stopAuto();
   }
 
   // On load: check session
@@ -298,21 +325,24 @@
 
   logoutBtn.onclick = async () => {
     await supabase.auth.signOut();
-    if (currentChannel) await supabase.removeChannel(currentChannel);
+    stopAuto();
     showLogin();
   };
 
   deviceSelect.onchange = async () => {
     const id = deviceSelect.value;
-    if (!id) return;
+    if (!id) { stopAuto(); return; }
+    stopAuto();
     await loadHistory(id);
-    await subscribeLive(id);
+    startAuto(id);
   };
 
   refreshBtn.onclick = async () => {
     const id = deviceSelect.value;
     if (!id) return;
+    stopAuto();
     await loadHistory(id);
+    startAuto(id);
   };
   rangeSelect.onchange = refreshBtn.onclick;
 </script>
