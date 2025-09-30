@@ -29,6 +29,12 @@
     .btn-secondary { background:#0b1324; border-color:#1f2a44; }
     .success { color:#34d399; }
     .error { color:#f87171; }
+
+    /* Aviso amable post-signup */
+    .notice { background:#0e1528; border:1px solid #1f2a44; border-radius:12px; padding:12px 14px; margin-top:12px; }
+    .steps { margin:10px 0 0 0; padding-left:18px; color:#cbd5e1; }
+    .steps li { margin:6px 0; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #334155; color:#93c5fd; font-size:12px; }
   </style>
 </head>
 <body>
@@ -109,7 +115,7 @@
           <button id="forgotBtn">Enviar enlace de recuperación</button>
         </div>
       </div>
-      <p class="muted">Revisá tu correo y sigue el enlace para establecer una nueva contraseña.</p>
+      <p class="muted">Revisa tu correo y sigue el enlace para establecer una nueva contraseña.</p>
     </div>
 
     <!-- Set new password (after email link) -->
@@ -125,6 +131,26 @@
         </div>
         <div style="align-self:end">
           <button id="recoveryBtn">Guardar contraseña</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Check email (friendly) -->
+    <div id="view-check" class="hide">
+      <div class="notice">
+        <div><span class="pill">Paso siguiente</span></div>
+        <p style="margin:8px 0 0 0">
+          Te enviamos un correo de <strong>confirmación</strong> a <strong id="checkEmail"></strong>.
+        </p>
+        <ul class="steps">
+          <li>Abre el email y haz clic en <em>Confirmar</em>.</li>
+          <li>Al confirmar, regresa e <strong>inicia sesión</strong>.</li>
+          <li>Verás los <strong>dispositivos</strong> a los que tienes acceso.</li>
+        </ul>
+        <div class="row" style="margin-top:10px">
+          <button id="openInboxBtn" class="btn-secondary">Abrir mi correo</button>
+          <button id="resendConfirmBtn">Reenviar confirmación</button>
+          <a id="changeEmailLink" class="muted" style="margin-left:8px; cursor:pointer">Cambiar email</a>
         </div>
       </div>
     </div>
@@ -208,6 +234,7 @@
   const vResend  = document.getElementById("view-resend");
   const vForgot  = document.getElementById("view-forgot");
   const vRecover = document.getElementById("view-recovery");
+  const vCheck   = document.getElementById("view-check");
 
   const suEmail  = document.getElementById("suEmail");
   const suPass1  = document.getElementById("suPass1");
@@ -229,6 +256,13 @@
   const linkResend = document.getElementById("linkResend");
   const linkForgot = document.getElementById("linkForgot");
 
+  const checkEmail = document.getElementById("checkEmail");
+  const openInboxBtn = document.getElementById("openInboxBtn");
+  const resendConfirmBtn = document.getElementById("resendConfirmBtn");
+  const changeEmailLink = document.getElementById("changeEmailLink");
+
+  let lastSignupEmail = "";
+
   // ======= helpers UI auth =======
   function setAuthView(which) {
     vLogin.classList.toggle("hide",   which !== "login");
@@ -236,12 +270,14 @@
     vResend.classList.toggle("hide",  which !== "resend");
     vForgot.classList.toggle("hide",  which !== "forgot");
     vRecover.classList.toggle("hide", which !== "recovery");
+    vCheck.classList.toggle("hide",   which !== "check");
     authTitle.textContent =
-      which === "signup"  ? "Crear cuenta" :
-      which === "resend"  ? "Reenviar confirmación" :
-      which === "forgot"  ? "Recuperar contraseña" :
-      which === "recovery"? "Establecer nueva contraseña" :
-                            "Iniciar sesión";
+      which === "signup"   ? "Crear cuenta" :
+      which === "resend"   ? "Reenviar confirmación" :
+      which === "forgot"   ? "Recuperar contraseña" :
+      which === "recovery" ? "Establecer nueva contraseña" :
+      which === "check"    ? "Revisa tu correo" :
+                             "Iniciar sesión";
     loginErr.textContent = "";
     loginErr.className = "muted";
   }
@@ -250,6 +286,43 @@
   linkSignup.onclick = () => setAuthView("signup");
   linkResend.onclick = () => setAuthView("resend");
   linkForgot.onclick = () => setAuthView("forgot");
+
+  changeEmailLink.onclick = () => {
+    suEmail.value = lastSignupEmail;
+    setAuthView("signup");
+  };
+
+  openInboxBtn.onclick = () => {
+    const email = (checkEmail.textContent || lastSignupEmail || "").trim().toLowerCase();
+    const domain = email.split("@")[1] || "";
+    let url = "about:blank";
+    if (domain.includes("gmail.com")) url = "https://mail.google.com/";
+    else if (domain.includes("outlook.") || domain.includes("hotmail.") || domain.includes("live.")) url = "https://outlook.live.com/";
+    else if (domain.includes("yahoo.")) url = "https://mail.yahoo.com/";
+    else url = "https://"+domain; // mejor esfuerzo
+    window.open(url, "_blank");
+  };
+
+  resendConfirmBtn.onclick = async () => {
+    const email = lastSignupEmail || rsEmail.value.trim();
+    if (!email) {
+      loginErr.textContent = "No tenemos un email para reenviar. Vuelve a 'Crear cuenta' o usa 'Reenviar confirmación'.";
+      loginErr.className = "error";
+      return;
+    }
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: REDIRECT_TO }
+    });
+    if (error) {
+      loginErr.textContent = "Error al reenviar: " + error.message;
+      loginErr.className = "error";
+      return;
+    }
+    loginErr.textContent = "Te reenviamos el correo de confirmación.";
+    loginErr.className = "success";
+  };
 
   // ======= Chart =======
   let chart;
@@ -380,11 +453,11 @@
     for (const r of data) {
       seenIds.add(r.id);
       const tsLabel = new Date(r.ts).toLocaleString();
-      c.data.labels.push(tsLabel);
       const temp = r.data?.temp ?? r.data?.t ?? null;
       const hum  = r.data?.hum  ?? r.data?.h ?? null;
       c.data.datasets[0].data.push(temp);
       c.data.datasets[1].data.push(hum);
+      c.data.labels.push(tsLabel);
 
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${tsLabel}</td>
@@ -433,13 +506,22 @@
   // ======= Eventos Auth =======
   loginBtn.onclick = async () => {
     loginErr.textContent = "";
+    const email = emailEl.value.trim();
     const { error } = await supabase.auth.signInWithPassword({
-      email: emailEl.value.trim(),
-      password: passEl.value.trim()
+      email, password: passEl.value.trim()
     });
     if (error) {
-      loginErr.textContent = "Error: " + error.message;
-      loginErr.className = "error";
+      const msg = (error.message || "").toLowerCase();
+      if (msg.includes("confirm") || msg.includes("not confirmed")) {
+        lastSignupEmail = email;
+        checkEmail.textContent = lastSignupEmail;
+        setAuthView("check");
+        loginErr.textContent = "Tu cuenta aún no está confirmada. Revisa tu bandeja o reenvía el correo.";
+        loginErr.className = "error";
+      } else {
+        loginErr.textContent = "Error: " + error.message;
+        loginErr.className = "error";
+      }
       return;
     }
     showApp();
@@ -461,9 +543,12 @@
       loginErr.className = "error";
       return;
     }
-    loginErr.textContent = "Te enviamos un correo de confirmación. Revisa tu bandeja.";
+    // Vista amable de verificación
+    lastSignupEmail = email;
+    checkEmail.textContent = email;
+    setAuthView("check");
+    loginErr.textContent = "Te enviamos un correo de confirmación. En cuanto lo aceptes, podrás iniciar sesión y ver tus dispositivos.";
     loginErr.className = "success";
-    setAuthView("login");
   };
 
   resendBtn.onclick = async () => {
@@ -480,9 +565,11 @@
       loginErr.className = "error";
       return;
     }
-    loginErr.textContent = "Correo de confirmación reenviado.";
+    lastSignupEmail = email;
+    checkEmail.textContent = email;
+    setAuthView("check");
+    loginErr.textContent = "Correo de confirmación reenviado. Revisa tu bandeja.";
     loginErr.className = "success";
-    setAuthView("login");
   };
 
   forgotBtn.onclick = async () => {
@@ -516,7 +603,6 @@
     }
     loginErr.textContent = "Contraseña actualizada. Ya puedes iniciar sesión.";
     loginErr.className = "success";
-    // borra el hash de la URL para no reentrar en recovery
     history.replaceState(null, "", location.pathname);
     setAuthView("login");
   };
