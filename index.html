@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Coinel — Telemetría</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="preconnect" href="https://esm.sh">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, "Noto Sans"; background:#0b0d12; color:#e5e7eb; }
+    header { display:flex; gap:12px; align-items:center; padding:16px 20px; border-bottom:1px solid #1f2937;}
+    header h1 { font-size:18px; margin:0; font-weight:600;}
+    .wrap { max-width:1100px; margin:24px auto; padding:0 20px;}
+    .card { background:#121521; border:1px solid #1f2937; border-radius:16px; padding:16px; box-shadow:0 8px 20px rgba(0,0,0,.3); }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media(min-width: 900px){ .grid { grid-template-columns: 1.2fr .8fr; } }
+    label { display:block; font-size:12px; color:#9ca3af; margin-bottom:6px; }
+    input, select, button { background:#0e1220; color:#e5e7eb; border:1px solid #243045; border-radius:10px; padding:10px 12px; }
+    button { cursor:pointer; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    table { width:100%; border-collapse: collapse; font-size:13px;}
+    th, td { padding:8px 10px; border-bottom:1px solid #1f2937; text-align:left; }
+    .muted { color:#9ca3af; font-size:12px; }
+    .hide { display:none; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Coinel — Telemetría (Supabase)</h1>
+  <div style="margin-left:auto" class="row">
+    <span id="userEmail" class="muted"></span>
+    <button id="logoutBtn" class="hide">Cerrar sesión</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- LOGIN -->
+  <div id="loginCard" class="card">
+    <h3>Iniciar sesión</h3>
+    <p class="muted">Usa un usuario de <em>Authentication → Users</em> (el que creaste: <code>ignaciosua.h@gmail.com</code> u otro).</p>
+    <div class="row">
+      <div>
+        <label>Email</label>
+        <input id="email" type="email" placeholder="email@dominio.com" />
+      </div>
+      <div>
+        <label>Contraseña</label>
+        <input id="password" type="password" placeholder="••••••••" />
+      </div>
+      <div style="align-self:end">
+        <button id="loginBtn">Entrar</button>
+      </div>
+    </div>
+    <div id="loginError" class="muted"></div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dash" class="hide">
+    <div class="card">
+      <div class="row">
+        <div style="min-width:260px">
+          <label>Dispositivo</label>
+          <select id="deviceSelect"></select>
+        </div>
+        <div>
+          <label>Rango</label>
+          <select id="rangeSelect">
+            <option value="1h">Última 1h</option>
+            <option value="6h" selected>Últimas 6h</option>
+            <option value="24h">Últimas 24h</option>
+            <option value="7d">Últimos 7 días</option>
+          </select>
+        </div>
+        <button id="refreshBtn" style="align-self:end">Actualizar</button>
+        <span class="muted" id="liveStatus">Sin suscripción</span>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <div class="card">
+        <canvas id="chart" height="140"></canvas>
+      </div>
+      <div class="card">
+        <h4 style="margin:0 0 8px 0">Lecturas recientes</h4>
+        <table>
+          <thead><tr><th>Fecha</th><th>Temp</th><th>Hum</th><th>JSON</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- APP -->
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  // ======= CONFIG: TU PROYECTO =======
+  const SUPABASE_URL = "https://beieykwfmsbodfzxijkz.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaWV5a3dmbXNib2Rmenhpamt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNTY1MTQsImV4cCI6MjA3NDgzMjUxNH0.8GDXx1DFM0177URNRq5VDtr7RtGwcKOiXszwn7Hpl9Y";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ======= UI elms =======
+  const loginCard = document.getElementById("loginCard");
+  const dash = document.getElementById("dash");
+  const emailEl = document.getElementById("email");
+  const passEl = document.getElementById("password");
+  const loginBtn = document.getElementById("loginBtn");
+  const loginErr = document.getElementById("loginError");
+  const userEmail = document.getElementById("userEmail");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const deviceSelect = document.getElementById("deviceSelect");
+  const rangeSelect = document.getElementById("rangeSelect");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const rowsBody = document.getElementById("rows");
+  const liveStatus = document.getElementById("liveStatus");
+
+  // ======= Chart =======
+  let chart;
+  function ensureChart() {
+    if (chart) return chart;
+    const ctx = document.getElementById("chart").getContext("2d");
+    chart = new window.Chart(ctx, {
+      type: "line",
+      data: { labels: [], datasets: [
+        { label: "Temp", data: [], yAxisID: 'y' },
+        { label: "Hum", data: [], yAxisID: 'y1' }
+      ]},
+      options: {
+        responsive: true,
+        interaction: { intersect: false, mode: 'index' },
+        scales: {
+          x: { ticks: { maxRotation:0, autoSkip: true }},
+          y: { position:'left' },
+          y1:{ position:'right', grid:{ drawOnChartArea:false } }
+        },
+        plugins: { legend: { position:'bottom' } }
+      }
+    });
+    return chart;
+  }
+
+  // ======= Estado realtime =======
+  let currentChannel = null;
+
+  async function loadDevices() {
+    // usamos la vista api.devices que ya filtra por usuario vía auth.uid()
+    const { data, error } = await supabase.from("api.devices").select("*").order("created_at", { ascending: false });
+    if (error) throw error;
+    deviceSelect.innerHTML = "";
+    if (!data || !data.length) {
+      deviceSelect.innerHTML = '<option value="">(sin dispositivos)</option>';
+      return;
+    }
+    for (const d of data) {
+      const opt = document.createElement("option");
+      opt.value = d.id;
+      opt.textContent = d.name || d.id;
+      deviceSelect.appendChild(opt);
+    }
+  }
+
+  function rangeToISO(range) {
+    const now = new Date();
+    const from = new Date(now);
+    if (range === "1h") from.setHours(now.getHours()-1);
+    if (range === "6h") from.setHours(now.getHours()-6);
+    if (range === "24h") from.setDate(now.getDate()-1);
+    if (range === "7d") from.setDate(now.getDate()-7);
+    return from.toISOString();
+  }
+
+  async function loadHistory(deviceId) {
+    const fromISO = rangeToISO(rangeSelect.value);
+    const { data, error } = await supabase
+      .from("api.readings")
+      .select("*")
+      .eq("device_id", deviceId)
+      .gte("ts", fromISO)
+      .order("ts", { ascending: true })
+      .limit(5000);
+    if (error) throw error;
+
+    const c = ensureChart();
+    c.data.labels = [];
+    c.data.datasets[0].data = []; // temp
+    c.data.datasets[1].data = []; // hum
+
+    rowsBody.innerHTML = "";
+
+    for (const r of data) {
+      const tsLabel = new Date(r.ts).toLocaleString();
+      c.data.labels.push(tsLabel);
+      const temp = r.data?.temp ?? r.data?.t ?? null;
+      const hum  = r.data?.hum  ?? r.data?.h ?? null;
+      c.data.datasets[0].data.push(temp);
+      c.data.datasets[1].data.push(hum);
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${tsLabel}</td>
+                      <td>${temp ?? "-"}</td>
+                      <td>${hum ?? "-"}</td>
+                      <td class="muted">${JSON.stringify(r.data)}</td>`;
+      rowsBody.appendChild(tr);
+    }
+    c.update();
+  }
+
+  async function subscribeLive(deviceId) {
+    // limpia suscripción previa
+    if (currentChannel) {
+      await supabase.removeChannel(currentChannel);
+      currentChannel = null;
+    }
+    liveStatus.textContent = "Suscrito…";
+
+    const c = ensureChart();
+
+    currentChannel = supabase
+      .channel(`readings-${deviceId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "readings",
+        filter: `device_id=eq.${deviceId}`
+      }, (payload) => {
+        const r = payload.new;
+        const tsLabel = new Date(r.ts).toLocaleString();
+        const temp = r.data?.temp ?? r.data?.t ?? null;
+        const hum  = r.data?.hum  ?? r.data?.h ?? null;
+
+        c.data.labels.push(tsLabel);
+        c.data.datasets[0].data.push(temp);
+        c.data.datasets[1].data.push(hum);
+        // Mantén máximo 500 puntos
+        if (c.data.labels.length > 500) {
+          c.data.labels.shift();
+          c.data.datasets[0].data.shift();
+          c.data.datasets[1].data.shift();
+        }
+        c.update();
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${tsLabel}</td>
+                        <td>${temp ?? "-"}</td>
+                        <td>${hum ?? "-"}</td>
+                        <td class="muted">${JSON.stringify(r.data)}</td>`;
+        rowsBody.insertBefore(tr, rowsBody.firstChild);
+      })
+      .subscribe((status) => {
+        liveStatus.textContent = (status === "SUBSCRIBED") ? "En vivo" : status;
+      });
+  }
+
+  // ======= Auth & flujo =======
+  async function showApp() {
+    loginCard.classList.add("hide");
+    dash.classList.remove("hide");
+    const { data: { user } } = await supabase.auth.getUser();
+    userEmail.textContent = user?.email ?? "";
+    logoutBtn.classList.remove("hide");
+
+    await loadDevices();
+    const first = deviceSelect.value;
+    if (first) {
+      await loadHistory(first);
+      await subscribeLive(first);
+    }
+  }
+
+  async function showLogin() {
+    dash.classList.add("hide");
+    loginCard.classList.remove("hide");
+    userEmail.textContent = "";
+    logoutBtn.classList.add("hide");
+  }
+
+  // On load: check session
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) showApp(); else showLogin();
+
+  // Events
+  loginBtn.onclick = async () => {
+    loginErr.textContent = "";
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailEl.value.trim(),
+      password: passEl.value.trim()
+    });
+    if (error) {
+      loginErr.textContent = "Error: " + error.message;
+      return;
+    }
+    showApp();
+  };
+
+  logoutBtn.onclick = async () => {
+    await supabase.auth.signOut();
+    if (currentChannel) await supabase.removeChannel(currentChannel);
+    showLogin();
+  };
+
+  deviceSelect.onchange = async () => {
+    const id = deviceSelect.value;
+    if (!id) return;
+    await loadHistory(id);
+    await subscribeLive(id);
+  };
+
+  refreshBtn.onclick = async () => {
+    const id = deviceSelect.value;
+    if (!id) return;
+    await loadHistory(id);
+  };
+  rangeSelect.onchange = refreshBtn.onclick;
+</script>
+</body>
+</html>
+
