@@ -148,7 +148,7 @@
 
   async function loadDevices() {
     // usamos la vista api.devices que ya filtra por usuario vía auth.uid()
-    const { data, error } = await supabase.from("api.devices").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("devices").select("*").order("created_at", { ascending: false });
     if (error) throw error;
     deviceSelect.innerHTML = "";
     if (!data || !data.length) {
@@ -176,7 +176,7 @@
   async function loadHistory(deviceId) {
     const fromISO = rangeToISO(rangeSelect.value);
     const { data, error } = await supabase
-      .from("api.readings")
+      .from("readings")
       .select("*")
       .eq("device_id", deviceId)
       .gte("ts", fromISO)
@@ -318,4 +318,3 @@
 </script>
 </body>
 </html>
-
