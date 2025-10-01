@@ -13,7 +13,7 @@
     .wrap { max-width:1100px; margin:24px auto; padding:0 20px;}
     .card { background:#121521; border:1px solid #1f2937; border-radius:16px; padding:16px; box-shadow:0 8px 20px rgba(0,0,0,.3); }
     .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
-    @media(min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
+    @media(min-width: 1024px){ .grid { grid-template-columns: 1fr 1fr; } }
     label { display:block; font-size:12px; color:#9ca3af; margin-bottom:6px; }
     input, select, button { background:#0e1220; color:#e5e7eb; border:1px solid #243045; border-radius:10px; padding:10px 12px; }
     button { cursor:pointer; }
@@ -57,7 +57,7 @@
         <button id="loginBtn">Entrar</button>
       </div>
     </div>
-    <p class="muted" style="margin-top:8px">Esta consola requiere un usuario con rol de <strong>administrador</strong>.</p>
+    <p class="muted" style="margin-top:8px">Esta consola requiere un usuario con rol de <strong>administrador</strong> para asignar accesos. Inicia sesión con tu cuenta.</p>
     <div id="loginMsg" class="muted" style="min-height:18px"></div>
   </div>
 
@@ -68,6 +68,17 @@
         <h3 style="margin:0">Panel de administrador</h3>
         <span id="adminBadge" class="badge">Verificando rol…</span>
       </div>
+
+      <!-- Admin Secret -->
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Admin Secret (x-admin-secret)</label>
+          <input id="adminSecretInput" type="password" placeholder="pegar secreto de admin" style="min-width:280px" />
+        </div>
+        <button id="saveSecretBtn" class="btn-secondary" style="align-self:end">Guardar secreto</button>
+        <span id="secretMsg" class="muted"></span>
+      </div>
+
       <div class="row" style="margin-top:10px">
         <button id="reloadBtn" class="btn-secondary">Recargar lista</button>
         <span id="globalMsg" class="muted"></span>
@@ -75,9 +86,23 @@
     </div>
 
     <div class="grid" style="margin-top:16px">
-      <!-- Crear / cambiar asignación -->
+
+      <!-- Crear dispositivo (del usuario actual) -->
       <div class="card">
-        <h4 class="section-title">Asignar dispositivo a usuario</h4>
+        <h4 class="section-title">Crear dispositivo propio</h4>
+        <div class="row">
+          <div>
+            <label>Nombre</label>
+            <input id="newDeviceName" type="text" placeholder="Ej: ESP32 Sala" style="min-width:280px" />
+          </div>
+          <button id="createDeviceBtn" style="align-self:end">Crear</button>
+        </div>
+        <div id="createMsg" class="muted" style="margin-top:8px"></div>
+      </div>
+
+      <!-- Asignar / cambiar rol / revocar -->
+      <div class="card">
+        <h4 class="section-title">Asignar/cambiar acceso (requiere Admin Secret)</h4>
         <div class="row">
           <div style="min-width:260px">
             <label>Dispositivo</label>
@@ -97,48 +122,22 @@
           </div>
         </div>
         <div class="row" style="margin-top:10px">
-          <button id="assignBtn">Asignar / Actualizar</button>
-          <span class="muted">Para obtener el <em>User ID</em> ve a <code>Authentication → Users</code> y copia el <em>UID</em>.</span>
+          <button id="assignBtn">Asignar / Actualizar rol</button>
+          <button id="revokeBtn" class="btn-secondary">Revocar acceso</button>
+          <span class="muted">El secreto se manda en header <code>x-admin-secret</code>.</span>
         </div>
         <div id="assignMsg" class="muted" style="margin-top:8px"></div>
       </div>
 
-      <!-- Cambiar rol / Revocar para un par device-user -->
-      <div class="card">
-        <h4 class="section-title">Cambiar rol / revocar</h4>
-        <div class="row">
-          <div style="min-width:260px">
-            <label>Dispositivo</label>
-            <select id="deviceSelect2"></select>
-          </div>
-          <div>
-            <label>User ID</label>
-            <input id="userIdInput2" type="text" placeholder="uuid del usuario" style="min-width:280px" />
-          </div>
-          <div>
-            <label>Rol nuevo</label>
-            <select id="roleSelect2">
-              <option value="viewer" selected>viewer</option>
-              <option value="editor">editor</option>
-              <option value="owner">owner</option>
-            </select>
-          </div>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button id="changeRoleBtn">Cambiar rol</button>
-          <button id="revokeBtn" class="btn-secondary">Revocar</button>
-        </div>
-        <div id="changeMsg" class="muted" style="margin-top:8px"></div>
-      </div>
     </div>
 
-    <!-- Tabla de asignaciones -->
+    <!-- Tabla de mis asignaciones -->
     <div class="card" style="margin-top:16px">
       <div class="row" style="justify-content:space-between;align-items:center">
-        <h4 class="section-title" style="margin:0">Asignaciones</h4>
+        <h4 class="section-title" style="margin:0">Mis asignaciones</h4>
         <div class="row">
           <label class="muted">Filtrar por texto</label>
-          <input id="filterInput" type="text" placeholder="device_id, nombre, user_id, rol…" />
+          <input id="filterInput" type="text" placeholder="device_id, nombre, rol…" />
         </div>
       </div>
       <table style="margin-top:10px">
@@ -147,11 +146,10 @@
             <th>Device</th>
             <th>Device ID</th>
             <th>Owner ID</th>
-            <th>User ID</th>
-            <th>Rol</th>
+            <th>Mi rol</th>
             <th>Estado</th>
             <th>Creado</th>
-            <th>Acciones</th>
+            <th>Acciones (si soy owner)</th>
           </tr>
         </thead>
         <tbody id="assignBody"></tbody>
@@ -167,9 +165,11 @@
 
   // ====== CONFIG ======
   const SUPABASE_URL = "https://beieykwfmsbodfzxijkz.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaWV5a3dmbXNib2Rmenhpamt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNTY1MTQsImV4cCI6MjA3NDgzMjUxNH0.8GDXx1DFM0177URNRq5VDtr7RtGwcKOiXszwn7Hpl9Y";
+  const SUPABASE_ANON_KEY = "TU_ANON_PUBLIC_AQUI"; // ⚠️ reemplazar
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const FUNC_BASE = `${SUPABASE_URL}/functions/v1/assignments`; // /list, /assign, /revoke, /change-role
+
+  // Edge Function base (según tu servidor)
+  const FUNC_BASE = `${SUPABASE_URL}/functions/v1/device-access-api`; // GET/POST '', GET/PATCH/DELETE ':id', POST ':id/assign'
 
   // ====== UI refs ======
   const loginCard = document.getElementById("loginCard");
@@ -180,214 +180,207 @@
   const loginMsg = document.getElementById("loginMsg");
   const emailEl = document.getElementById("email");
   const passEl = document.getElementById("password");
+
   const adminBadge = document.getElementById("adminBadge");
   const reloadBtn = document.getElementById("reloadBtn");
   const globalMsg = document.getElementById("globalMsg");
 
+  const adminSecretInput = document.getElementById("adminSecretInput");
+  const saveSecretBtn = document.getElementById("saveSecretBtn");
+  const secretMsg = document.getElementById("secretMsg");
+
+  const newDeviceName = document.getElementById("newDeviceName");
+  const createDeviceBtn = document.getElementById("createDeviceBtn");
+  const createMsg = document.getElementById("createMsg");
+
   const deviceSelect = document.getElementById("deviceSelect");
-  const deviceSelect2 = document.getElementById("deviceSelect2");
   const userIdInput = document.getElementById("userIdInput");
-  const userIdInput2 = document.getElementById("userIdInput2");
   const roleSelect = document.getElementById("roleSelect");
-  const roleSelect2 = document.getElementById("roleSelect2");
   const assignBtn = document.getElementById("assignBtn");
   const revokeBtn = document.getElementById("revokeBtn");
-  const changeRoleBtn = document.getElementById("changeRoleBtn");
   const assignMsg = document.getElementById("assignMsg");
-  const changeMsg = document.getElementById("changeMsg");
 
   const filterInput = document.getElementById("filterInput");
   const assignBody = document.getElementById("assignBody");
   const tableMsg = document.getElementById("tableMsg");
 
   // ====== helpers ======
-  async function getSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session;
-  }
+  const getSession = async () => (await supabase.auth.getSession()).data.session;
 
-  async function callAssignments(path, method = "GET", body = undefined) {
+  const getAuthHeaders = async () => {
     const session = await getSession();
     if (!session) throw new Error("No hay sesión");
-    const res = await fetch(`${FUNC_BASE}/${path}`, {
+    return { "Authorization": `Bearer ${session.access_token}`, "Content-Type": "application/json" };
+  };
+
+  const callAPI = async (path, method = "GET", body = undefined, asAdmin = false) => {
+    const headers = await getAuthHeaders();
+    if (asAdmin) {
+      const secret = (localStorage.getItem("adminSecret") || "").trim();
+      if (!secret) throw new Error("Falta Admin Secret");
+      headers["x-admin-secret"] = secret;
+    }
+    const res = await fetch(`${FUNC_BASE}${path}`, {
       method,
-      headers: {
-        "Authorization": `Bearer ${session.access_token}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: body ? JSON.stringify(body) : undefined
     });
-    const json = await res.json().catch(()=> ({}));
+    const text = await res.text();
+    let json = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
     if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
     return json;
-  }
+  };
 
-  function showLogin() {
+  const showLogin = () => {
     adminCard.classList.add("hide");
     loginCard.classList.remove("hide");
     logoutBtn.classList.add("hide");
     who.textContent = "";
-  }
-  function showAdmin(user) {
+  };
+
+  const showAdmin = (user) => {
     loginCard.classList.add("hide");
     adminCard.classList.remove("hide");
     logoutBtn.classList.remove("hide");
     who.textContent = user?.email ?? "";
-  }
+  };
 
-  async function checkAdminAndInit() {
+  // ¿Es admin? — lo inferimos intentando leer en tabla admins (RLS: user_id = auth.uid())
+  const checkIsAdmin = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from("admins")
+        .select("user_id")
+        .eq("user_id", userId)
+        .single();
+      return !!(data && !error);
+    } catch { return false; }
+  };
+
+  // Rellena selects de dispositivos usando mis asignaciones (lo que devuelve la función)
+  const populateDevicesFromRows = (rows) => {
+    deviceSelect.innerHTML = "";
+    const seen = new Set();
+    for (const r of rows) {
+      const dev = r.devices || {};
+      const id = dev.id || r.device_id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = dev.name || id;
+      deviceSelect.appendChild(opt);
+    }
+  };
+
+  // Render de mis asignaciones (lista)
+  const renderAssignments = async () => {
+    assignBody.innerHTML = "";
+    tableMsg.textContent = "Cargando…";
+    try {
+      // GET '' -> devuelve array simple de device_access con join devices(*)
+      const rows = await callAPI("", "GET");
+      if (!Array.isArray(rows) || rows.length === 0) {
+        tableMsg.textContent = "No hay asignaciones.";
+        populateDevicesFromRows([]);
+        return;
+      }
+      tableMsg.textContent = "";
+      populateDevicesFromRows(rows);
+
+      // Saber mi user_id para decidir acciones (owner)
+      const me = (await supabase.auth.getUser()).data.user;
+      const myId = me?.id;
+
+      for (const r of rows) {
+        const dev = r.devices || {};
+        const isOwner = (r.role === "owner") || (dev.user_id && dev.user_id === myId);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${dev.name ?? "(s/n)"} </td>
+          <td><code>${dev.id ?? r.device_id}</code></td>
+          <td><code>${dev.user_id ?? ""}</code></td>
+          <td>${r.role}</td>
+          <td>${r.is_active ? "activo" : "inactivo"}</td>
+          <td>${new Date(dev.created_at || r.created_at || Date.now()).toLocaleString()}</td>
+          <td>
+            ${
+              isOwner ? `
+                <div class="row" style="gap:6px;">
+                  <input data-act="rename" data-id="${dev.id ?? r.device_id}" placeholder="nuevo nombre" />
+                  <button data-act="doRename" data-id="${dev.id ?? r.device_id}" class="btn-secondary">Renombrar</button>
+                  <button data-act="delete" data-id="${dev.id ?? r.device_id}">Eliminar</button>
+                </div>
+              ` : `<span class="muted">—</span>`
+            }
+          </td>
+        `;
+        assignBody.appendChild(tr);
+      }
+
+      // wire acciones owner
+      assignBody.querySelectorAll('button[data-act="doRename"]').forEach(btn=>{
+        btn.onclick = async () => {
+          const id = btn.getAttribute("data-id");
+          const input = assignBody.querySelector(`input[data-act="rename"][data-id="${id}"]`);
+          const name = (input?.value || "").trim();
+          if (!name) return alert("Ingresa un nuevo nombre");
+          try {
+            await callAPI(`/${id}`, "PATCH", { name });
+            btn.textContent = "Renombrado ✓";
+            setTimeout(()=> btn.textContent = "Renombrar", 1000);
+            await renderAssignments();
+          } catch (e) {
+            alert("Error al renombrar: " + e.message);
+          }
+        };
+      });
+      assignBody.querySelectorAll('button[data-act="delete"]').forEach(btn=>{
+        btn.onclick = async () => {
+          const id = btn.getAttribute("data-id");
+          if (!confirm("¿Eliminar dispositivo? Esto borra el registro del dispositivo.")) return;
+          try {
+            await callAPI(`/${id}`, "DELETE");
+            btn.textContent = "Eliminado ✓";
+            await renderAssignments();
+          } catch (e) {
+            alert("Error al eliminar: " + e.message);
+          }
+        };
+      });
+
+      // filtro rápido
+      filterInput.oninput = () => {
+        const q = filterInput.value.trim().toLowerCase();
+        assignBody.querySelectorAll("tr").forEach(tr => {
+          const txt = tr.innerText.toLowerCase();
+          tr.style.display = txt.includes(q) ? "" : "none";
+        });
+      };
+
+    } catch (e) {
+      tableMsg.textContent = "Error: " + e.message;
+    }
+  };
+
+  // ====== bootstrap / flujo ======
+  const checkAdminAndInit = async () => {
     const session = await getSession();
     if (!session) { showLogin(); return; }
     const user = (await supabase.auth.getUser()).data?.user ?? null;
 
-    // Probar si es admin: en admins la función puede tener RLS; así que inferimos por /list
+    // ¿es admin?
     adminBadge.textContent = "Comprobando…";
-    let isAdmin = false;
-    try {
-      const resp = await callAssignments("list", "GET");
-      // Si devuelve {data: [...]}, asumimos admin
-      isAdmin = Array.isArray(resp?.data);
-      await renderAssignments(resp);
-      await populateDevices(); // llena selects
-    } catch (e) {
-      console.error(e);
-      globalMsg.textContent = "No se pudo cargar la lista: " + e.message;
-    }
-    if (isAdmin) {
-      adminBadge.textContent = "Superadmin";
-    } else {
-      adminBadge.textContent = "Sin permisos de admin";
-      globalMsg.textContent = "Tu usuario no es administrador. Puedes ver tus accesos pero no modificarlos.";
-    }
+    const isAdmin = user ? await checkIsAdmin(user.id) : false;
+    adminBadge.textContent = isAdmin ? "Superadmin" : "Usuario";
+
+    // precargar admin secret si lo hay
+    const saved = localStorage.getItem("adminSecret") || "";
+    if (saved) adminSecretInput.value = saved;
+
     showAdmin(user);
-  }
-
-  async function populateDevices() {
-    // intenta leer devices (si RLS lo permite verás todos; si no, llenamos con lo que haya en la tabla actual)
-    deviceSelect.innerHTML = "";
-    deviceSelect2.innerHTML = "";
-    try {
-      const { data, error } = await supabase.from("devices").select("id,name,created_at").order("created_at",{ascending:false});
-      if (!error && Array.isArray(data)) {
-        for (const d of data) addDeviceOption(d.id, d.name);
-        return;
-      }
-    } catch(e) { /* ignore */ }
-    // fallback: usar los devices presentes en la tabla de asignaciones
-    const seen = new Set();
-    document.querySelectorAll('td[data-device-id]').forEach(td => {
-      const id = td.getAttribute('data-device-id');
-      const name = td.getAttribute('data-device-name') || id;
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        addDeviceOption(id, name);
-      }
-    });
-  }
-  function addDeviceOption(id, name) {
-    const o1 = document.createElement("option");
-    o1.value = id; o1.textContent = name || id;
-    const o2 = o1.cloneNode(true);
-    deviceSelect.appendChild(o1);
-    deviceSelect2.appendChild(o2);
-  }
-
-  async function renderAssignments(payload) {
-    // payload (admin): { data: [...] } con join de devices
-    // payload (no admin): { accesses: [...], ownedDevices: [...] }
-    let rows = [];
-    if (Array.isArray(payload?.data)) {
-      rows = payload.data;
-    } else if (Array.isArray(payload?.accesses)) {
-      rows = payload.accesses;
-    }
-    assignBody.innerHTML = "";
-    if (!rows.length) {
-      tableMsg.textContent = "No hay asignaciones registradas.";
-      return;
-    }
-    tableMsg.textContent = "";
-    for (const r of rows) {
-      const dev = r.devices || {};
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${dev.name ?? "(s/n)"} </td>
-        <td data-device-id="${dev.id ?? r.device_id}" data-device-name="${dev.name ?? ""}">
-          <code>${dev.id ?? r.device_id}</code>
-        </td>
-        <td><code>${dev.owner_id ?? ""}</code></td>
-        <td><code>${r.user_id}</code></td>
-        <td>${r.role}</td>
-        <td>${r.is_active ? "activo" : "inactivo"} ${r.revoked_at ? `<br><span class="muted">${r.revoked_at}</span>` : ""}</td>
-        <td>${new Date(r.created_at).toLocaleString()}</td>
-        <td>
-          <div class="row">
-            <select data-act="role" data-device="${dev.id ?? r.device_id}" data-user="${r.user_id}">
-              <option value="viewer"${r.role==="viewer"?" selected":""}>viewer</option>
-              <option value="editor"${r.role==="editor"?" selected":""}>editor</option>
-              <option value="owner"${r.role==="owner"?" selected":""}>owner</option>
-            </select>
-            <button data-act="apply" class="btn-secondary">Aplicar</button>
-            <button data-act="revoke">Revocar</button>
-          </div>
-        </td>
-      `;
-      assignBody.appendChild(tr);
-    }
-    // wire actions
-    assignBody.querySelectorAll('button[data-act="apply"]').forEach(btn=>{
-      btn.onclick = async () => {
-        const row = btn.closest('td');
-        const sel = row.querySelector('select[data-act="role"]');
-        const device_id = sel.getAttribute('data-device');
-        const user_id = sel.getAttribute('data-user');
-        const role = sel.value;
-        try {
-          await callAssignments("change-role", "POST", { device_id, user_id, role });
-          btn.textContent = "Listo ✓";
-          setTimeout(()=> btn.textContent = "Aplicar", 1000);
-        } catch (e) {
-          alert("Error al cambiar rol: " + e.message);
-        }
-      };
-    });
-    assignBody.querySelectorAll('button[data-act="revoke"]').forEach(btn=>{
-      btn.onclick = async () => {
-        const row = btn.closest('td');
-        const sel = row.querySelector('select[data-act="role"]');
-        const device_id = sel.getAttribute('data-device');
-        const user_id = sel.getAttribute('data-user');
-        if (!confirm("¿Revocar acceso?")) return;
-        try {
-          await callAssignments("revoke", "POST", { device_id, user_id });
-          btn.textContent = "Revocado ✓";
-          await reloadAssignments();
-        } catch (e) {
-          alert("Error al revocar: " + e.message);
-        }
-      };
-    });
-  }
-
-  async function reloadAssignments() {
-    try {
-      const resp = await callAssignments("list", "GET");
-      await renderAssignments(resp);
-      await populateDevices();
-      globalMsg.textContent = "Lista actualizada.";
-      setTimeout(()=> globalMsg.textContent = "", 1200);
-    } catch (e) {
-      globalMsg.textContent = "Error al recargar: " + e.message;
-    }
-  }
-
-  // ====== filtros ======
-  filterInput.oninput = () => {
-    const q = filterInput.value.trim().toLowerCase();
-    assignBody.querySelectorAll("tr").forEach(tr => {
-      const txt = tr.innerText.toLowerCase();
-      tr.style.display = txt.includes(q) ? "" : "none";
-    });
+    await renderAssignments();
   };
 
   // ====== eventos ======
@@ -410,7 +403,32 @@
     showLogin();
   };
 
-  reloadBtn.onclick = reloadAssignments;
+  reloadBtn.onclick = renderAssignments;
+
+  saveSecretBtn.onclick = () => {
+    const v = (adminSecretInput.value || "").trim();
+    if (!v) { secretMsg.textContent = "Secreto vacío"; secretMsg.className = "err"; return; }
+    localStorage.setItem("adminSecret", v);
+    secretMsg.textContent = "Secreto guardado en este navegador.";
+    secretMsg.className = "ok";
+    setTimeout(()=> secretMsg.textContent = "", 1500);
+  };
+
+  createDeviceBtn.onclick = async () => {
+    createMsg.textContent = "";
+    const name = (newDeviceName.value || "").trim();
+    if (!name) { createMsg.textContent = "Ingresa un nombre"; createMsg.className = "err"; return; }
+    try {
+      await callAPI("", "POST", { name });
+      createMsg.textContent = "Dispositivo creado.";
+      createMsg.className = "ok";
+      newDeviceName.value = "";
+      await renderAssignments();
+    } catch (e) {
+      createMsg.textContent = "Error: " + e.message;
+      createMsg.className = "err";
+    }
+  };
 
   assignBtn.onclick = async () => {
     assignMsg.textContent = "";
@@ -423,62 +441,41 @@
       return;
     }
     try {
-      await callAssignments("assign", "POST", { device_id, user_id, role });
-      assignMsg.textContent = "Asignación creada/actualizada.";
+      await callAPI(`/${device_id}/assign`, "POST", { user_id, role, is_active: true }, true);
+      assignMsg.textContent = "Asignación/rol aplicado.";
       assignMsg.className = "ok";
       userIdInput.value = "";
-      await reloadAssignments();
+      await renderAssignments();
     } catch (e) {
       assignMsg.textContent = "Error: " + e.message;
       assignMsg.className = "err";
     }
   };
 
-  changeRoleBtn.onclick = async () => {
-    changeMsg.textContent = "";
-    const device_id = deviceSelect2.value;
-    const user_id = userIdInput2.value.trim();
-    const role = roleSelect2.value;
-    if (!device_id || !user_id) {
-      changeMsg.textContent = "Completa dispositivo y user_id";
-      changeMsg.className = "err";
-      return;
-    }
-    try {
-      await callAssignments("change-role", "POST", { device_id, user_id, role });
-      changeMsg.textContent = "Rol actualizado.";
-      changeMsg.className = "ok";
-      await reloadAssignments();
-    } catch (e) {
-      changeMsg.textContent = "Error: " + e.message;
-      changeMsg.className = "err";
-    }
-  };
-
   revokeBtn.onclick = async () => {
-    changeMsg.textContent = "";
-    const device_id = deviceSelect2.value;
-    const user_id = userIdInput2.value.trim();
+    assignMsg.textContent = "";
+    const device_id = deviceSelect.value;
+    const user_id = userIdInput.value.trim();
     if (!device_id || !user_id) {
-      changeMsg.textContent = "Completa dispositivo y user_id";
-      changeMsg.className = "err";
+      assignMsg.textContent = "Completa dispositivo y user_id";
+      assignMsg.className = "err";
       return;
     }
     if (!confirm("¿Seguro que quieres revocar este acceso?")) return;
     try {
-      await callAssignments("revoke", "POST", { device_id, user_id });
-      changeMsg.textContent = "Acceso revocado.";
-      changeMsg.className = "ok";
-      await reloadAssignments();
+      await callAPI(`/${device_id}/assign`, "POST", { user_id, is_active: false }, true);
+      assignMsg.textContent = "Acceso revocado.";
+      assignMsg.className = "ok";
+      await renderAssignments();
     } catch (e) {
-      changeMsg.textContent = "Error: " + e.message;
-      changeMsg.className = "err";
+      assignMsg.textContent = "Error: " + e.message;
+      assignMsg.className = "err";
     }
   };
 
-  // ====== bootstrap ======
+  // Auto-bootstrap
   (async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await getSession();
     if (session) await checkAdminAndInit(); else showLogin();
   })();
 </script>
