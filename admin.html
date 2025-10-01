@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Coinel — Admin de asignaciones</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="preconnect" href="https://esm.sh">
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#0b0d12; color:#e5e7eb; }
+    header { display:flex; gap:12px; align-items:center; padding:14px 18px; border-bottom:1px solid #1f2937;}
+    header h1 { font-size:18px; margin:0; font-weight:600;}
+    .wrap { max-width:1100px; margin:24px auto; padding:0 20px;}
+    .card { background:#121521; border:1px solid #1f2937; border-radius:16px; padding:16px; box-shadow:0 8px 20px rgba(0,0,0,.3); }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media(min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
+    label { display:block; font-size:12px; color:#9ca3af; margin-bottom:6px; }
+    input, select, button { background:#0e1220; color:#e5e7eb; border:1px solid #243045; border-radius:10px; padding:10px 12px; }
+    button { cursor:pointer; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .muted { color:#9ca3af; font-size:12px; }
+    .hide { display:none; }
+    table { width:100%; border-collapse: collapse; font-size:13px;}
+    th, td { padding:8px 10px; border-bottom:1px solid #1f2937; text-align:left; vertical-align: top; }
+    .badge { display:inline-block; padding:2px 8px; border:1px solid #334155; border-radius:999px; font-size:12px; }
+    .ok { color:#22c55e; }
+    .err { color:#ef4444; }
+    .btn-secondary { background:#0b1324; border-color:#1f2a44; }
+    .section-title { margin:0 0 8px 0; font-size:14px; }
+    code { background:#0b1324; padding:1px 6px; border-radius:6px; border:1px solid #1f2a44; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Coinel — Admin de asignaciones</h1>
+  <div style="margin-left:auto" class="row">
+    <span id="who" class="muted"></span>
+    <button id="logoutBtn" class="hide">Cerrar sesión</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- LOGIN -->
+  <div id="loginCard" class="card">
+    <h3 style="margin:0 0 10px 0">Iniciar sesión</h3>
+    <div class="row">
+      <div>
+        <label>Email</label>
+        <input id="email" type="email" placeholder="email@dominio.com" />
+      </div>
+      <div>
+        <label>Contraseña</label>
+        <input id="password" type="password" placeholder="••••••••" />
+      </div>
+      <div style="align-self:end">
+        <button id="loginBtn">Entrar</button>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:8px">Esta consola requiere un usuario con rol de <strong>administrador</strong>.</p>
+    <div id="loginMsg" class="muted" style="min-height:18px"></div>
+  </div>
+
+  <!-- ADMIN -->
+  <div id="adminCard" class="hide">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Panel de administrador</h3>
+        <span id="adminBadge" class="badge">Verificando rol…</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="reloadBtn" class="btn-secondary">Recargar lista</button>
+        <span id="globalMsg" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <!-- Crear / cambiar asignación -->
+      <div class="card">
+        <h4 class="section-title">Asignar dispositivo a usuario</h4>
+        <div class="row">
+          <div style="min-width:260px">
+            <label>Dispositivo</label>
+            <select id="deviceSelect"></select>
+          </div>
+          <div>
+            <label>User ID (UID del usuario)</label>
+            <input id="userIdInput" type="text" placeholder="uuid del usuario" style="min-width:280px" />
+          </div>
+          <div>
+            <label>Rol</label>
+            <select id="roleSelect">
+              <option value="viewer" selected>viewer</option>
+              <option value="editor">editor</option>
+              <option value="owner">owner</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="assignBtn">Asignar / Actualizar</button>
+          <span class="muted">Para obtener el <em>User ID</em> ve a <code>Authentication → Users</code> y copia el <em>UID</em>.</span>
+        </div>
+        <div id="assignMsg" class="muted" style="margin-top:8px"></div>
+      </div>
+
+      <!-- Cambiar rol / Revocar para un par device-user -->
+      <div class="card">
+        <h4 class="section-title">Cambiar rol / revocar</h4>
+        <div class="row">
+          <div style="min-width:260px">
+            <label>Dispositivo</label>
+            <select id="deviceSelect2"></select>
+          </div>
+          <div>
+            <label>User ID</label>
+            <input id="userIdInput2" type="text" placeholder="uuid del usuario" style="min-width:280px" />
+          </div>
+          <div>
+            <label>Rol nuevo</label>
+            <select id="roleSelect2">
+              <option value="viewer" selected>viewer</option>
+              <option value="editor">editor</option>
+              <option value="owner">owner</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="changeRoleBtn">Cambiar rol</button>
+          <button id="revokeBtn" class="btn-secondary">Revocar</button>
+        </div>
+        <div id="changeMsg" class="muted" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- Tabla de asignaciones -->
+    <div class="card" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h4 class="section-title" style="margin:0">Asignaciones</h4>
+        <div class="row">
+          <label class="muted">Filtrar por texto</label>
+          <input id="filterInput" type="text" placeholder="device_id, nombre, user_id, rol…" />
+        </div>
+      </div>
+      <table style="margin-top:10px">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Device ID</th>
+            <th>Owner ID</th>
+            <th>User ID</th>
+            <th>Rol</th>
+            <th>Estado</th>
+            <th>Creado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="assignBody"></tbody>
+      </table>
+      <div id="tableMsg" class="muted" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  // ====== CONFIG ======
+  const SUPABASE_URL = "https://beieykwfmsbodfzxijkz.supabase.co";
+  const SUPABASE_ANON_KEY = "REEMPLAZA_CON_TU_ANON_KEY";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const FUNC_BASE = `${SUPABASE_URL}/functions/v1/assignments`; // /list, /assign, /revoke, /change-role
+
+  // ====== UI refs ======
+  const loginCard = document.getElementById("loginCard");
+  const adminCard = document.getElementById("adminCard");
+  const who = document.getElementById("who");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const loginBtn = document.getElementById("loginBtn");
+  const loginMsg = document.getElementById("loginMsg");
+  const emailEl = document.getElementById("email");
+  const passEl = document.getElementById("password");
+  const adminBadge = document.getElementById("adminBadge");
+  const reloadBtn = document.getElementById("reloadBtn");
+  const globalMsg = document.getElementById("globalMsg");
+
+  const deviceSelect = document.getElementById("deviceSelect");
+  const deviceSelect2 = document.getElementById("deviceSelect2");
+  const userIdInput = document.getElementById("userIdInput");
+  const userIdInput2 = document.getElementById("userIdInput2");
+  const roleSelect = document.getElementById("roleSelect");
+  const roleSelect2 = document.getElementById("roleSelect2");
+  const assignBtn = document.getElementById("assignBtn");
+  const revokeBtn = document.getElementById("revokeBtn");
+  const changeRoleBtn = document.getElementById("changeRoleBtn");
+  const assignMsg = document.getElementById("assignMsg");
+  const changeMsg = document.getElementById("changeMsg");
+
+  const filterInput = document.getElementById("filterInput");
+  const assignBody = document.getElementById("assignBody");
+  const tableMsg = document.getElementById("tableMsg");
+
+  // ====== helpers ======
+  async function getSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
+  }
+
+  async function callAssignments(path, method = "GET", body = undefined) {
+    const session = await getSession();
+    if (!session) throw new Error("No hay sesión");
+    const res = await fetch(`${FUNC_BASE}/${path}`, {
+      method,
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const json = await res.json().catch(()=> ({}));
+    if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+    return json;
+  }
+
+  function showLogin() {
+    adminCard.classList.add("hide");
+    loginCard.classList.remove("hide");
+    logoutBtn.classList.add("hide");
+    who.textContent = "";
+  }
+  function showAdmin(user) {
+    loginCard.classList.add("hide");
+    adminCard.classList.remove("hide");
+    logoutBtn.classList.remove("hide");
+    who.textContent = user?.email ?? "";
+  }
+
+  async function checkAdminAndInit() {
+    const session = await getSession();
+    if (!session) { showLogin(); return; }
+    const user = (await supabase.auth.getUser()).data?.user ?? null;
+
+    // Probar si es admin: en admins la función puede tener RLS; así que inferimos por /list
+    adminBadge.textContent = "Comprobando…";
+    let isAdmin = false;
+    try {
+      const resp = await callAssignments("list", "GET");
+      // Si devuelve {data: [...]}, asumimos admin
+      isAdmin = Array.isArray(resp?.data);
+      await renderAssignments(resp);
+      await populateDevices(); // llena selects
+    } catch (e) {
+      console.error(e);
+      globalMsg.textContent = "No se pudo cargar la lista: " + e.message;
+    }
+    if (isAdmin) {
+      adminBadge.textContent = "Superadmin";
+    } else {
+      adminBadge.textContent = "Sin permisos de admin";
+      globalMsg.textContent = "Tu usuario no es administrador. Puedes ver tus accesos pero no modificarlos.";
+    }
+    showAdmin(user);
+  }
+
+  async function populateDevices() {
+    // intenta leer devices (si RLS lo permite verás todos; si no, llenamos con lo que haya en la tabla actual)
+    deviceSelect.innerHTML = "";
+    deviceSelect2.innerHTML = "";
+    try {
+      const { data, error } = await supabase.from("devices").select("id,name,created_at").order("created_at",{ascending:false});
+      if (!error && Array.isArray(data)) {
+        for (const d of data) addDeviceOption(d.id, d.name);
+        return;
+      }
+    } catch(e) { /* ignore */ }
+    // fallback: usar los devices presentes en la tabla de asignaciones
+    const seen = new Set();
+    document.querySelectorAll('td[data-device-id]').forEach(td => {
+      const id = td.getAttribute('data-device-id');
+      const name = td.getAttribute('data-device-name') || id;
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        addDeviceOption(id, name);
+      }
+    });
+  }
+  function addDeviceOption(id, name) {
+    const o1 = document.createElement("option");
+    o1.value = id; o1.textContent = name || id;
+    const o2 = o1.cloneNode(true);
+    deviceSelect.appendChild(o1);
+    deviceSelect2.appendChild(o2);
+  }
+
+  async function renderAssignments(payload) {
+    // payload (admin): { data: [...] } con join de devices
+    // payload (no admin): { accesses: [...], ownedDevices: [...] }
+    let rows = [];
+    if (Array.isArray(payload?.data)) {
+      rows = payload.data;
+    } else if (Array.isArray(payload?.accesses)) {
+      rows = payload.accesses;
+    }
+    assignBody.innerHTML = "";
+    if (!rows.length) {
+      tableMsg.textContent = "No hay asignaciones registradas.";
+      return;
+    }
+    tableMsg.textContent = "";
+    for (const r of rows) {
+      const dev = r.devices || {};
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${dev.name ?? "(s/n)"} </td>
+        <td data-device-id="${dev.id ?? r.device_id}" data-device-name="${dev.name ?? ""}">
+          <code>${dev.id ?? r.device_id}</code>
+        </td>
+        <td><code>${dev.owner_id ?? ""}</code></td>
+        <td><code>${r.user_id}</code></td>
+        <td>${r.role}</td>
+        <td>${r.is_active ? "activo" : "inactivo"} ${r.revoked_at ? `<br><span class="muted">${r.revoked_at}</span>` : ""}</td>
+        <td>${new Date(r.created_at).toLocaleString()}</td>
+        <td>
+          <div class="row">
+            <select data-act="role" data-device="${dev.id ?? r.device_id}" data-user="${r.user_id}">
+              <option value="viewer"${r.role==="viewer"?" selected":""}>viewer</option>
+              <option value="editor"${r.role==="editor"?" selected":""}>editor</option>
+              <option value="owner"${r.role==="owner"?" selected":""}>owner</option>
+            </select>
+            <button data-act="apply" class="btn-secondary">Aplicar</button>
+            <button data-act="revoke">Revocar</button>
+          </div>
+        </td>
+      `;
+      assignBody.appendChild(tr);
+    }
+    // wire actions
+    assignBody.querySelectorAll('button[data-act="apply"]').forEach(btn=>{
+      btn.onclick = async () => {
+        const row = btn.closest('td');
+        const sel = row.querySelector('select[data-act="role"]');
+        const device_id = sel.getAttribute('data-device');
+        const user_id = sel.getAttribute('data-user');
+        const role = sel.value;
+        try {
+          await callAssignments("change-role", "POST", { device_id, user_id, role });
+          btn.textContent = "Listo ✓";
+          setTimeout(()=> btn.textContent = "Aplicar", 1000);
+        } catch (e) {
+          alert("Error al cambiar rol: " + e.message);
+        }
+      };
+    });
+    assignBody.querySelectorAll('button[data-act="revoke"]').forEach(btn=>{
+      btn.onclick = async () => {
+        const row = btn.closest('td');
+        const sel = row.querySelector('select[data-act="role"]');
+        const device_id = sel.getAttribute('data-device');
+        const user_id = sel.getAttribute('data-user');
+        if (!confirm("¿Revocar acceso?")) return;
+        try {
+          await callAssignments("revoke", "POST", { device_id, user_id });
+          btn.textContent = "Revocado ✓";
+          await reloadAssignments();
+        } catch (e) {
+          alert("Error al revocar: " + e.message);
+        }
+      };
+    });
+  }
+
+  async function reloadAssignments() {
+    try {
+      const resp = await callAssignments("list", "GET");
+      await renderAssignments(resp);
+      await populateDevices();
+      globalMsg.textContent = "Lista actualizada.";
+      setTimeout(()=> globalMsg.textContent = "", 1200);
+    } catch (e) {
+      globalMsg.textContent = "Error al recargar: " + e.message;
+    }
+  }
+
+  // ====== filtros ======
+  filterInput.oninput = () => {
+    const q = filterInput.value.trim().toLowerCase();
+    assignBody.querySelectorAll("tr").forEach(tr => {
+      const txt = tr.innerText.toLowerCase();
+      tr.style.display = txt.includes(q) ? "" : "none";
+    });
+  };
+
+  // ====== eventos ======
+  loginBtn.onclick = async () => {
+    loginMsg.textContent = "";
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailEl.value.trim(),
+      password: passEl.value.trim()
+    });
+    if (error) {
+      loginMsg.textContent = "Error: " + error.message;
+      loginMsg.className = "err";
+      return;
+    }
+    await checkAdminAndInit();
+  };
+
+  logoutBtn.onclick = async () => {
+    await supabase.auth.signOut();
+    showLogin();
+  };
+
+  reloadBtn.onclick = reloadAssignments;
+
+  assignBtn.onclick = async () => {
+    assignMsg.textContent = "";
+    const device_id = deviceSelect.value;
+    const user_id = userIdInput.value.trim();
+    const role = roleSelect.value;
+    if (!device_id || !user_id) {
+      assignMsg.textContent = "Completa dispositivo y user_id";
+      assignMsg.className = "err";
+      return;
+    }
+    try {
+      await callAssignments("assign", "POST", { device_id, user_id, role });
+      assignMsg.textContent = "Asignación creada/actualizada.";
+      assignMsg.className = "ok";
+      userIdInput.value = "";
+      await reloadAssignments();
+    } catch (e) {
+      assignMsg.textContent = "Error: " + e.message;
+      assignMsg.className = "err";
+    }
+  };
+
+  changeRoleBtn.onclick = async () => {
+    changeMsg.textContent = "";
+    const device_id = deviceSelect2.value;
+    const user_id = userIdInput2.value.trim();
+    const role = roleSelect2.value;
+    if (!device_id || !user_id) {
+      changeMsg.textContent = "Completa dispositivo y user_id";
+      changeMsg.className = "err";
+      return;
+    }
+    try {
+      await callAssignments("change-role", "POST", { device_id, user_id, role });
+      changeMsg.textContent = "Rol actualizado.";
+      changeMsg.className = "ok";
+      await reloadAssignments();
+    } catch (e) {
+      changeMsg.textContent = "Error: " + e.message;
+      changeMsg.className = "err";
+    }
+  };
+
+  revokeBtn.onclick = async () => {
+    changeMsg.textContent = "";
+    const device_id = deviceSelect2.value;
+    const user_id = userIdInput2.value.trim();
+    if (!device_id || !user_id) {
+      changeMsg.textContent = "Completa dispositivo y user_id";
+      changeMsg.className = "err";
+      return;
+    }
+    if (!confirm("¿Seguro que quieres revocar este acceso?")) return;
+    try {
+      await callAssignments("revoke", "POST", { device_id, user_id });
+      changeMsg.textContent = "Acceso revocado.";
+      changeMsg.className = "ok";
+      await reloadAssignments();
+    } catch (e) {
+      changeMsg.textContent = "Error: " + e.message;
+      changeMsg.className = "err";
+    }
+  };
+
+  // ====== bootstrap ======
+  (async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) await checkAdminAndInit(); else showLogin();
+  })();
+</script>
+</body>
+</html>
