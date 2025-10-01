@@ -253,7 +253,7 @@
         .from("admins")
         .select("user_id")
         .eq("user_id", userId)
-        .single();
+        .limit(1); 
       return !!(data && !error);
     } catch { return false; }
   };
